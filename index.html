@@ -170,6 +170,16 @@
                     <input type="file" id="item-upload" accept="image/*" multiple style="display: none;">
 
                     <button id="random-btn" class="secondary">🔀 Randomize Item</button>
+
+                    <select id="item-toggle-select">
+                        <option value="on" selected>Item Display: On</option>
+                        <option value="off">Item Display: Off</option>
+                    </select>
+
+                    <select id="countdown-select">
+                        <option value="3" selected>Timer: 3s</option>
+                        <option value="5">Timer: 5s</option>
+                    </select>
                 </div>
 
                 <div class="controls-row">
@@ -225,6 +235,8 @@
         const bgUpload = document.getElementById('bg-upload');
         const itemUpload = document.getElementById('item-upload');
         const randomBtn = document.getElementById('random-btn');
+        const itemToggleSelect = document.getElementById('item-toggle-select');
+        const countdownSelect = document.getElementById('countdown-select');
         const snapBtn = document.getElementById('snap');
         const mirrorBtn = document.getElementById('toggle-mirror');
         const cutCountSelect = document.getElementById('cut-count-select');
@@ -236,24 +248,22 @@
         let bgImage = new Image();
         let bgLoaded = false;
 
-        // 아이템 배열 (초기값 빈 배열 - 기본 하트 제거됨)
         const itemList = [];
         let handAssignedItems = {};
 
         let isMirrored = true;
+        let isItemDisplayEnabled = true;
         let currentFrameColor = '#FFFFFF';
         let currentOrientation = 'vertical';
         let targetCutCount = 4;
         let handLandmarksData = null;
 
-        // 무작위 아이템 가져오기 (아이템이 없으면 null 반환)
         function getRandomItem() {
             if (itemList.length === 0) return null;
             const randomIndex = Math.floor(Math.random() * itemList.length);
             return itemList[randomIndex];
         }
 
-        // 사용자가 파일 추가시 배열에 넣기
         itemUpload.addEventListener('change', (e) => {
             const files = Array.from(e.target.files);
             files.forEach((file) => {
@@ -269,12 +279,14 @@
             });
         });
 
-        // 아이템 수동 랜덤 리셋
         randomBtn.addEventListener('click', () => {
             handAssignedItems = {};
         });
 
-        // 선택한 컷 수와 방향에 맞게 프레임 캔버스 크기 계산
+        itemToggleSelect.addEventListener('change', (e) => {
+            isItemDisplayEnabled = (e.target.value === 'on');
+        });
+
         function updateCanvasDimensions() {
             const imgW = 320;
             const imgH = 220;
@@ -382,8 +394,8 @@
             
             canvasCtx.restore();
 
-            // 손 스티커 오버레이 (사용자가 추가한 아이템이 있을 때만 동작)
-            if (handLandmarksData && handLandmarksData.length > 0 && itemList.length > 0) {
+            // 손 스티커 렌더링
+            if (isItemDisplayEnabled && handLandmarksData && handLandmarksData.length > 0 && itemList.length > 0) {
                 canvasCtx.save();
                 canvasCtx.globalCompositeOperation = 'source-over';
 
@@ -395,6 +407,7 @@
 
                     if (activeItem) {
                         const palmCenter = hand[9];
+                        const wrist = hand[0];
                         
                         let x = isMirrored 
                             ? (1 - palmCenter.x) * canvasElement.width 
@@ -402,10 +415,13 @@
                             
                         let y = palmCenter.y * canvasElement.height;
                         
-                        const itemSize = 110;
+                        const dx = (palmCenter.x - wrist.x) * canvasElement.width;
+                        const dy = (palmCenter.y - wrist.y) * canvasElement.height;
+                        const handDistance = Math.sqrt(dx * dx + dy * dy);
+                        const itemSize = Math.max(40, Math.min(220, handDistance * 1.5));
                         
                         let drawX = Math.max(0, Math.min(canvasElement.width - itemSize, x - (itemSize / 2)));
-                        let drawY = Math.max(0, Math.min(canvasElement.height - itemSize, y - (itemSize / 2) - 20));
+                        let drawY = Math.max(0, Math.min(canvasElement.height - itemSize, y - (itemSize / 2) - (itemSize * 0.2)));
 
                         canvasCtx.drawImage(activeItem, drawX, drawY, itemSize, itemSize);
                     }
@@ -465,7 +481,7 @@
                     return;
                 }
 
-                let timeLeft = 3;
+                let timeLeft = parseInt(countdownSelect.value);
                 countdownEl.style.display = 'flex';
                 countdownEl.textContent = timeLeft;
 
