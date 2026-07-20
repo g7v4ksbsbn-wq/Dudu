@@ -1,0 +1,529 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Photo Booth</title>
+    
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1/selfie_segmentation.js" crossorigin="anonymous"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/hands.js" crossorigin="anonymous"></script>
+    
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+            text-align: center;
+            background-color: #fafafa;
+            color: #333;
+            padding: 40px 20px;
+            line-height: 1.6;
+        }
+
+        h1 {
+            font-size: 24px;
+            font-weight: 600;
+            color: #111;
+            margin-bottom: 25px;
+            letter-spacing: -0.5px;
+        }
+        
+        .main-layout {
+            display: flex;
+            justify-content: center;
+            align-items: flex-start;
+            gap: 40px;
+            flex-wrap: wrap;
+            max-width: 1200px;
+            margin: 0 auto;
+        }
+
+        .left-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .canvas-container {
+            background: #fff;
+            border-radius: 8px;
+            box-shadow: 0 4px 16px rgba(0,0,0,0.06);
+            overflow: hidden;
+            width: 640px;
+            height: 480px;
+            position: relative;
+            border: 1px solid #eaeaea;
+        }
+        
+        #countdown {
+            position: absolute;
+            top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(255, 255, 255, 0.7);
+            color: #ff758f;
+            font-size: 160px;
+            font-weight: 200;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            display: none;
+            pointer-events: none;
+        }
+
+        .controls-group {
+            display: flex;
+            flex-direction: column;
+            gap: 12px;
+            margin-bottom: 20px;
+            width: 100%;
+            align-items: center;
+        }
+
+        .controls-row {
+            display: flex;
+            gap: 10px;
+            align-items: center;
+            justify-content: center;
+            flex-wrap: wrap;
+        }
+        
+        button, label.upload-btn, select {
+            padding: 9px 16px;
+            font-size: 13px;
+            font-weight: 500;
+            cursor: pointer;
+            border-radius: 4px;
+            border: 1px solid #ddd;
+            background-color: #fff;
+            color: #444;
+            transition: all 0.2s ease-in-out;
+        }
+
+        select { outline: none; }
+
+        button.primary {
+            background-color: #ffccd5;
+            color: #ff758f;
+            border: none;
+        }
+        button.primary:hover { background-color: #ffb3c1; }
+        button.primary:disabled {
+            background-color: #eaeaea;
+            color: #aaa;
+            cursor: not-allowed;
+        }
+
+        button.secondary:hover, label.upload-btn:hover {
+            background-color: #f5f5f5;
+            border-color: #ccc;
+        }
+        
+        .color-palette {
+            display: flex;
+            gap: 8px;
+            align-items: center;
+            margin-left: 5px;
+        }
+
+        .color-btn {
+            width: 22px;
+            height: 22px;
+            border-radius: 50%;
+            border: 2px solid #fff;
+            box-shadow: 0 0 0 1px #ddd;
+            cursor: pointer;
+            padding: 0;
+            transition: transform 0.1s ease;
+        }
+
+        .color-btn:hover { transform: scale(1.15); }
+        .color-btn.active { box-shadow: 0 0 0 2px #555; }
+
+        .right-panel {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+        }
+
+        .four-cut-frame {
+            background: #fff;
+            border-radius: 4px;
+            box-shadow: 0 8px 30px rgba(0,0,0,0.08);
+            border: 1px solid #eee;
+            transition: all 0.3s ease;
+        }
+
+        #input_video { display: none; }
+    </style>
+</head>
+<body>
+
+    <h1>Photo Booth</h1>
+    
+    <div class="main-layout">
+        <div class="left-panel">
+            <div class="controls-group">
+                <div class="controls-row">
+                    <label for="bg-upload" class="upload-btn">Background Image</label>
+                    <input type="file" id="bg-upload" accept="image/*" style="display: none;">
+                    
+                    <label for="item-upload" class="upload-btn">Add Items (+)</label>
+                    <input type="file" id="item-upload" accept="image/*" multiple style="display: none;">
+
+                    <button id="random-btn" class="secondary">🔀 Randomize Item</button>
+                </div>
+
+                <div class="controls-row">
+                    <select id="cut-count-select">
+                        <option value="1">1 Cut</option>
+                        <option value="2">2 Cuts</option>
+                        <option value="3">3 Cuts</option>
+                        <option value="4" selected>4 Cuts</option>
+                    </select>
+
+                    <select id="orientation-select">
+                        <option value="vertical">Vertical Frame</option>
+                        <option value="horizontal">Horizontal Frame</option>
+                    </select>
+
+                    <button id="toggle-mirror" class="secondary">Mirror: On</button>
+
+                    <div class="color-palette">
+                        <button class="color-btn active" style="background-color: #FFFFFF;" data-color="#FFFFFF"></button>
+                        <button class="color-btn" style="background-color: #FFE5EC;" data-color="#FFE5EC"></button>
+                        <button class="color-btn" style="background-color: #E2F0CB;" data-color="#E2F0CB"></button>
+                        <button class="color-btn" style="background-color: #C7CEEA;" data-color="#C7CEEA"></button>
+                        <button class="color-btn" style="background-color: #FDFD96;" data-color="#FDFD96"></button>
+                        <button class="color-btn" style="background-color: #E6E6FA;" data-color="#E6E6FA"></button>
+                        <button class="color-btn" style="background-color: #222222;" data-color="#222222"></button>
+                    </div>
+                    
+                    <button id="snap" class="primary" style="margin-left: 10px;">Start Shooting</button>
+                </div>
+            </div>
+
+            <div class="canvas-container">
+                <canvas id="output_canvas" width="640" height="480"></canvas>
+                <div id="countdown">3</div>
+            </div>
+        </div>
+
+        <div class="right-panel">
+            <canvas id="four_cut_canvas" class="four-cut-frame"></canvas>
+            <button id="download-btn" class="secondary" style="margin-top: 20px; display: none; width: 100%;">Save Photo</button>
+        </div>
+    </div>
+        
+    <video id="input_video" width="640" height="480" autoplay playsinline></video>
+
+    <script>
+        const videoElement = document.getElementById('input_video');
+        const canvasElement = document.getElementById('output_canvas');
+        const canvasCtx = canvasElement.getContext('2d');
+        const fourCutCanvas = document.getElementById('four_cut_canvas');
+        const fourCutCtx = fourCutCanvas.getContext('2d');
+        
+        const bgUpload = document.getElementById('bg-upload');
+        const itemUpload = document.getElementById('item-upload');
+        const randomBtn = document.getElementById('random-btn');
+        const snapBtn = document.getElementById('snap');
+        const mirrorBtn = document.getElementById('toggle-mirror');
+        const cutCountSelect = document.getElementById('cut-count-select');
+        const orientationSelect = document.getElementById('orientation-select');
+        const downloadBtn = document.getElementById('download-btn');
+        const countdownEl = document.getElementById('countdown');
+        const colorBtns = document.querySelectorAll('.color-btn');
+
+        let bgImage = new Image();
+        let bgLoaded = false;
+
+        // 아이템 배열 (초기값 빈 배열 - 기본 하트 제거됨)
+        const itemList = [];
+        let handAssignedItems = {};
+
+        let isMirrored = true;
+        let currentFrameColor = '#FFFFFF';
+        let currentOrientation = 'vertical';
+        let targetCutCount = 4;
+        let handLandmarksData = null;
+
+        // 무작위 아이템 가져오기 (아이템이 없으면 null 반환)
+        function getRandomItem() {
+            if (itemList.length === 0) return null;
+            const randomIndex = Math.floor(Math.random() * itemList.length);
+            return itemList[randomIndex];
+        }
+
+        // 사용자가 파일 추가시 배열에 넣기
+        itemUpload.addEventListener('change', (e) => {
+            const files = Array.from(e.target.files);
+            files.forEach((file) => {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    const newImg = new Image();
+                    newImg.src = event.target.result;
+                    newImg.onload = () => {
+                        itemList.push(newImg);
+                    };
+                };
+                reader.readAsDataURL(file);
+            });
+        });
+
+        // 아이템 수동 랜덤 리셋
+        randomBtn.addEventListener('click', () => {
+            handAssignedItems = {};
+        });
+
+        // 선택한 컷 수와 방향에 맞게 프레임 캔버스 크기 계산
+        function updateCanvasDimensions() {
+            const imgW = 320;
+            const imgH = 220;
+            const padding = 20;
+            const gap = 15;
+
+            if (currentOrientation === 'vertical') {
+                fourCutCanvas.width = imgW + (padding * 2);
+                fourCutCanvas.height = (padding * 2) + (targetCutCount * imgH) + ((targetCutCount - 1) * gap) + 40;
+            } else {
+                if (targetCutCount === 1) {
+                    fourCutCanvas.width = imgW + (padding * 2);
+                    fourCutCanvas.height = imgH + (padding * 2) + 40;
+                } else if (targetCutCount === 2) {
+                    fourCutCanvas.width = (padding * 2) + (2 * imgW) + gap;
+                    fourCutCanvas.height = imgH + (padding * 2) + 40;
+                } else if (targetCutCount === 3) {
+                    fourCutCanvas.width = (padding * 2) + (3 * imgW) + (2 * gap);
+                    fourCutCanvas.height = imgH + (padding * 2) + 40;
+                } else {
+                    fourCutCanvas.width = (padding * 2) + (2 * imgW) + gap;
+                    fourCutCanvas.height = (padding * 2) + (2 * imgH) + gap + 40;
+                }
+            }
+            initFourCutFrame();
+        }
+
+        function initFourCutFrame() {
+            fourCutCtx.fillStyle = currentFrameColor;
+            fourCutCtx.fillRect(0, 0, fourCutCanvas.width, fourCutCanvas.height);
+            
+            const isDark = currentFrameColor === '#222222';
+            fourCutCtx.fillStyle = isDark ? '#888' : '#aaa';
+            fourCutCtx.font = '300 13px sans-serif';
+            fourCutCtx.textAlign = 'center';
+            
+            const now = new Date();
+            const dateStr = now.getFullYear() + '.' + (now.getMonth()+1) + '.' + now.getDate();
+            fourCutCtx.fillText('MEMORIES IN PHOTO | ' + dateStr, fourCutCanvas.width / 2, fourCutCanvas.height - 15);
+        }
+
+        cutCountSelect.addEventListener('change', (e) => {
+            targetCutCount = parseInt(e.target.value);
+            updateCanvasDimensions();
+        });
+
+        orientationSelect.addEventListener('change', (e) => {
+            currentOrientation = e.target.value;
+            updateCanvasDimensions();
+        });
+
+        colorBtns.forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                colorBtns.forEach(b => b.classList.remove('active'));
+                e.target.classList.add('active');
+                currentFrameColor = e.target.getAttribute('data-color');
+                initFourCutFrame();
+            });
+        });
+
+        mirrorBtn.addEventListener('click', () => {
+            isMirrored = !isMirrored;
+            mirrorBtn.textContent = isMirrored ? 'Mirror: On' : 'Mirror: Off';
+        });
+
+        bgUpload.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (file) {
+                const reader = new FileReader();
+                reader.onload = (event) => {
+                    bgImage.src = event.target.result;
+                    bgImage.onload = () => { bgLoaded = true; };
+                };
+                reader.readAsDataURL(file);
+            }
+        });
+
+        // AI 인물 배경 제거
+        const selfieSegmentation = new SelfieSegmentation({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation@0.1/${file}`;
+        }});
+        selfieSegmentation.setOptions({ modelSelection: 1 });
+        
+        selfieSegmentation.onResults((results) => {
+            canvasCtx.save();
+            canvasCtx.clearRect(0, 0, canvasElement.width, canvasElement.height);
+            
+            if (isMirrored) {
+                canvasCtx.translate(canvasElement.width, 0);
+                canvasCtx.scale(-1, 1);
+            }
+            
+            canvasCtx.drawImage(results.segmentationMask, 0, 0, canvasElement.width, canvasElement.height);
+            
+            canvasCtx.globalCompositeOperation = 'source-in';
+            canvasCtx.drawImage(results.image, 0, 0, canvasElement.width, canvasElement.height);
+            
+            canvasCtx.globalCompositeOperation = 'destination-over';
+            if (bgLoaded) {
+                canvasCtx.drawImage(bgImage, 0, 0, canvasElement.width, canvasElement.height);
+            } else {
+                canvasCtx.fillStyle = '#fdfdfd';
+                canvasCtx.fillRect(0, 0, canvasElement.width, canvasElement.height);
+            }
+            
+            canvasCtx.restore();
+
+            // 손 스티커 오버레이 (사용자가 추가한 아이템이 있을 때만 동작)
+            if (handLandmarksData && handLandmarksData.length > 0 && itemList.length > 0) {
+                canvasCtx.save();
+                canvasCtx.globalCompositeOperation = 'source-over';
+
+                handLandmarksData.forEach((hand, index) => {
+                    if (!handAssignedItems[index]) {
+                        handAssignedItems[index] = getRandomItem();
+                    }
+                    const activeItem = handAssignedItems[index];
+
+                    if (activeItem) {
+                        const palmCenter = hand[9];
+                        
+                        let x = isMirrored 
+                            ? (1 - palmCenter.x) * canvasElement.width 
+                            : palmCenter.x * canvasElement.width;
+                            
+                        let y = palmCenter.y * canvasElement.height;
+                        
+                        const itemSize = 110;
+                        
+                        let drawX = Math.max(0, Math.min(canvasElement.width - itemSize, x - (itemSize / 2)));
+                        let drawY = Math.max(0, Math.min(canvasElement.height - itemSize, y - (itemSize / 2) - 20));
+
+                        canvasCtx.drawImage(activeItem, drawX, drawY, itemSize, itemSize);
+                    }
+                });
+
+                canvasCtx.restore();
+            }
+        });
+
+        // AI 손 추적
+        const hands = new Hands({locateFile: (file) => {
+            return `https://cdn.jsdelivr.net/npm/@mediapipe/hands@0.4/${file}`;
+        }});
+        hands.setOptions({
+            maxNumHands: 2,
+            modelComplexity: 1,
+            minDetectionConfidence: 0.5,
+            minTrackingConfidence: 0.5
+        });
+
+        hands.onResults((results) => {
+            handLandmarksData = results.multiHandLandmarks;
+            if (!handLandmarksData || handLandmarksData.length === 0) {
+                handAssignedItems = {};
+            }
+        });
+
+        // 카메라 루프
+        navigator.mediaDevices.getUserMedia({ video: { width: 640, height: 480 }, audio: false })
+            .then(stream => {
+                videoElement.srcObject = stream;
+                async function predictionLoop() {
+                    if (!videoElement.paused && !videoElement.ended) {
+                        await hands.send({ image: videoElement });
+                        await selfieSegmentation.send({ image: videoElement });
+                    }
+                    requestAnimationFrame(predictionLoop);
+                }
+                videoElement.addEventListener('loadedmetadata', () => { predictionLoop(); });
+            })
+            .catch(err => alert("카메라를 실행할 수 없습니다: " + err));
+
+        // 촬영 시스템
+        snapBtn.addEventListener('click', () => {
+            initFourCutFrame();
+            downloadBtn.style.display = 'none';
+            snapBtn.disabled = true;
+            snapBtn.textContent = "Shooting...";
+            
+            let shotCount = 0;
+
+            function takeNextShot() {
+                if (shotCount >= targetCutCount) {
+                    snapBtn.disabled = false;
+                    snapBtn.textContent = "Start Shooting";
+                    downloadBtn.style.display = 'block';
+                    return;
+                }
+
+                let timeLeft = 3;
+                countdownEl.style.display = 'flex';
+                countdownEl.textContent = timeLeft;
+
+                let timer = setInterval(() => {
+                    timeLeft--;
+                    if (timeLeft > 0) {
+                        countdownEl.textContent = timeLeft;
+                    } else {
+                        clearInterval(timer);
+                        countdownEl.style.display = 'none';
+                        
+                        handAssignedItems = {};
+                        
+                        saveToFourCut(shotCount);
+                        shotCount++;
+                        
+                        setTimeout(takeNextShot, 500); 
+                    }
+                }, 1000);
+            }
+
+            takeNextShot();
+        });
+
+        function saveToFourCut(index) {
+            const imgW = 320;
+            const imgH = 220;
+            const padding = 20;
+            const gap = 15;
+
+            if (currentOrientation === 'vertical') {
+                const startX = padding;
+                const startY = padding + (index * (imgH + gap));
+                fourCutCtx.drawImage(canvasElement, startX, startY, imgW, imgH);
+            } else {
+                if (targetCutCount === 4) {
+                    const col = index % 2;
+                    const row = Math.floor(index / 2);
+                    const startX = padding + (col * (imgW + gap + 5));
+                    const startY = padding + (row * (imgH + gap));
+                    fourCutCtx.drawImage(canvasElement, startX, startY, imgW, imgH);
+                } else {
+                    const startX = padding + (index * (imgW + gap));
+                    const startY = padding;
+                    fourCutCtx.drawImage(canvasElement, startX, startY, imgW, imgH);
+                }
+            }
+        }
+
+        downloadBtn.addEventListener('click', () => {
+            const dataUrl = fourCutCanvas.toDataURL('image/png');
+            const link = document.createElement('a');
+            link.download = 'photo_frame.png';
+            link.href = dataUrl;
+            link.click();
+        });
+
+        updateCanvasDimensions();
+    </script>
+</body>
+</html>
